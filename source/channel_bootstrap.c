@@ -644,6 +644,21 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
         goto socket_init_failed;
     }
 
+	struct aws_socket_endpoint local_endpoint;
+	AWS_ZERO_STRUCT(local_endpoint);
+	local_endpoint.port = 58883;
+	if (task_data->options.domain == AWS_SOCKET_IPV4) {
+			printf("IPv4\n");
+			strcpy(local_endpoint.address, "0.0.0.0");
+	} else if (task_data->options.domain == AWS_SOCKET_IPV6) {
+			printf("IPv6\n");
+			strcpy(local_endpoint.address, "::");
+	}
+	if (aws_socket_bind(outgoing_socket, &local_endpoint)) {
+			goto socket_bind_failed;
+	}
+	outgoing_socket->state = 0x01;
+
     if (aws_socket_connect(
             outgoing_socket,
             &task_data->endpoint,
@@ -658,6 +673,7 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
 
 socket_connect_failed:
     aws_host_resolver_record_connection_failure(task_data->args->bootstrap->host_resolver, &task_data->host_address);
+socket_bind_failed:
     aws_socket_clean_up(outgoing_socket);
 socket_init_failed:
     aws_mem_release(allocator, outgoing_socket);

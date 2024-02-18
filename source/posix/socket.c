@@ -137,6 +137,42 @@ static int s_determine_socket_error(int error) {
     }
 }
 
+static int s_fix_socket_port(int fd, int port, const struct aws_socket_options *options) {
+	struct sockaddr_storage device_addr;
+	socklen_t device_addr_len;
+	if (options->domain == AWS_SOCKET_IPV4) {
+		struct sockaddr_in *addr = (struct sockaddr_in *)&device_addr;
+		addr->sin_family = AF_INET;
+		addr->sin_addr.s_addr = INADDR_ANY;
+		addr->sin_port = htons(port);
+		device_addr_len = sizeof(struct sockaddr_in);
+	} else if (options->domain == AWS_SOCKET_IPV6) {
+		struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&device_addr;
+		addr->sin6_family = AF_INET6;
+		addr->sin6_addr = in6addr_any;
+		addr->sin6_port = htons(port);
+		device_addr_len = sizeof(struct sockaddr_in6);
+	} else if (options->domain == AWS_SOCKET_LOCAL) {
+		return 0;
+#ifdef USE_VSOCK
+	} else if (options->domain == AWS_SOCKET_VSOCK) {
+		struct sockaddr_vm *addr = (struct sockaddr_vm *)&device_addr;
+		addr->svm_family = AF_VSOCK;
+		addr->svm_cid = VSOCK_ANY_CID;
+		addr->svm_port = htons(port);
+		device_addr_len = sizeof(struct sockaddr_vm);
+#endif
+	} else {
+		AWS_ASSERT(0);
+		return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+	}
+
+	if (options->domain != AWS_SOCKET_LOCAL)
+		if (bind(fd, (struct sockaddr *)&device_addr, device_addr_len) < 0)
+			printf("bind error.\n");
+	return 0;
+}
+
 static int s_create_socket(struct aws_socket *sock, const struct aws_socket_options *options) {
 
     int fd = socket(s_convert_domain(options->domain), s_convert_type(options->type), 0);
